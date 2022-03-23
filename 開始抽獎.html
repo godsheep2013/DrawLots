@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style type="text/css">
+      [v-cloak] {
+          display: none !important;
+      }
+  </style>
+  <!-- Bootstrap CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" integrity="sha384-Gn5384xqQ1aoWXA+058RXPxPg6fy4IWvTNh0E263XmFcJlSAwiGgFAW/dAiS6JXm" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/@mdi/font@6.x/css/materialdesignicons.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+  <title>抽籤程式</title>
+</head>
+<body>
+  <div v-cloak id="app" class="app" style="margin: 3%;">
+    <v-app>
+      <v-main>
+        <div style="margin:0px auto;">
+          <h1>抽籤程式</h1>
+          <v-btn-toggle
+            v-model="operation"
+            borderless
+            mandatory
+          >
+            <v-btn
+              color="blue-grey"
+              class="ma-2 white--text"
+            >
+              程式說明
+            </v-btn>
+            <v-btn
+              color="primary"
+              class="ma-2 white--text"
+            >
+              名單設定
+            </v-btn>
+            <v-btn
+              color="success"
+              class="ma-2 white--text"
+              :disabled="invalidLotteryNumber"
+            >
+              開始抽籤
+            </v-btn>
+          </v-btn-toggle><br>
+          <v-btn
+            elevation="3"
+            color="default"
+            rounded
+            class="ma-2 black--text"
+            v-if="operation===1"
+            v-on:click="reloadPage()"
+          >
+            重新載入
+          </v-btn>
+          <v-btn
+            elevation="3"
+            color="default"
+            rounded
+            class="ma-2 black--text"
+            v-if="operation===2"
+            v-on:click="adjustPicMode = !adjustPicMode"
+          >
+            調整圖片
+          </v-btn>
+          <v-btn
+            elevation="3"
+            color="default"
+            rounded
+            class="ma-2 black--text"
+            v-if="operation===2"
+            v-on:click="exportCSV()"
+          >
+            匯出抽籤結果
+          </v-btn>
+        </div>
+  <!-- 上傳頁面 -->
+        <div v-if="operation=='1'">
+          <div class="input-group mb-3" style="margin-top:1%;">
+            <div style="margin-top:2%;">
+              <span class="input-group-text">請選擇excel名單</span>
+            </div>
+            <div class="custom-file" style="margin-left: 0px;margin-top: 2%;max-width: 300px;">
+              <input type="file" class="custom-file-input" id="docpicker" @change="importFile" accept=".csv,application/vnd.ms-excel,.xlt,application/vnd.ms-excel,.xla,application/vnd.ms-excel,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.xltx,application/vnd.openxmlformats-officedocument.spreadsheetml.template,.xlsm,application/vnd.ms-excel.sheet.macroEnabled.12,.xltm,application/vnd.ms-excel.template.macroEnabled.12,.xlam,application/vnd.ms-excel.addin.macroEnabled.12,.xlsb,application/vnd.ms-excel.sheet.binary.macroEnabled.12">
+              <label class="custom-file-label" for="inputGroupFile01">Choose file</label>
+            </div>
+          </div>
+          <div class="card" v-if="has_upload" style="margin:2% auto;">
+            <div class="card-header">
+              <h4>設置</h4>
+            </div>
+            <div class="card-body">
+              <p>抽籤名單：共計 <font color="blue">{{dataArray.length-1}}</font> 筆</p>
+              <p v-if="filtered_dataArray.length>0">條件篩選後，共計 <font color="red">{{filtered_dataArray.length-1}}</font> 筆</p>
+              <v-row>
+                <v-col cols="auto">
+                  <font style="font-weight: bold;color: red;">抽出人數: </font>
+                </v-col>
+                <v-col>
+                  <v-text-field 
+                    v-model="lotteryNumber"
+                    type="number"
+                    max-width="350px"
+                    :hint="'區間:1 ~ '+(filtered_dataArray.length-1)"
+                    label="抽出人數"
+                    outlined
+                    dense></v-text-field>
+                </v-col>
+                <v-col>
+                  <font color="red" v-if="invalidLotteryNumber">輸入數值區間不正確!</font>
+                </v-col>
+              </v-row>
+
+              <hr>
+              <v-btn
+                tile
+                color="secondary"
+                @click="mutateConditionNumber('+')"
+              >
+                <v-icon left>
+                  mdi-comment-plus-outline
+                </v-icon>
+                新增條件篩選
+              </v-btn>
+              <v-btn
+                tile
+                color="error"
+                @click="mutateConditionNumber('-');filterByCondition();"
+              >
+                <v-icon left>
+                  mdi-comment-remove-outline
+                </v-icon>
+                移除條件篩選
+              </v-btn>
+
+              <v-card
+                elevation="2"
+                outlined
+                shaped
+                tile
+                style="max-width: 500px;margin-top: 5px;"
+                v-for="(conditionObject,index) in conditions"
+                v-if="conditionNum >= (index+1)"
+              >
+                <div style="margin:3%;">
+                  <font color="#16537e" style="font-weight: bold;">文字篩選條件({{index+1}})</font>:
+                  <v-select
+                    :items="attributeArray"
+                    v-model="conditionObject.attribute"
+                    solo
+                    style="max-width: 200px"
+                  ></v-select>
+                  <v-select
+                    :items="conditionSelector"
+                    v-model="conditionObject.type"
+                    solo
+                    style="max-width: 200px"
+                  ></v-select>
+                  <v-text-field 
+                    v-model="conditionObject.value"
+                    solo
+                    style="max-width: 300px"></v-text-field>
+                </div>
+              </v-card>
+              <v-btn
+                tile
+                color="primary"
+                @click="filterByCondition()"
+                v-if="conditionNum>0"
+                style="margin: 2% auto;"
+              >
+                <v-icon left>
+                   mdi-filter-outline
+                </v-icon>
+                套用條件
+              </v-btn>
+              <v-alert
+                dense
+                text
+                type="success"
+                style="margin:10px auto;"
+                v-if="conditionAlert"
+              >
+                已套用條件， {{filtered_dataArray.length-1}}/{{dataArray.length-1}} 符合。
+              </v-alert>
+              <hr>
+              隱碼欄位(不需要可不選):
+                  <v-select
+                    :items="attributeArray"
+                    v-model="secretAttribute"
+                    solo
+                    style="max-width: 200px"
+                  ></v-select>
+                
+
+            </div>
+          </div>
+          <div class="card" v-if="has_upload">
+            <div class="card-header">
+              <h4>抽籤名單(條件篩選後)</h4>
+            </div>
+            <div class="card-body">
+              <p>抽籤名單：共計 <font color="blue">{{dataArray.length-1}}</font> 筆</p>
+              <p v-if="filtered_dataArray.length>0">條件篩選後，共計 <font color="red">{{filtered_dataArray.length-1}}</font> 筆</p>
+              <blockquote class="blockquote mb-0">
+                <table class="table table-bordered">
+                  <tbody>
+                    <tr class="table-light" v-if="filtered_dataArray.length>0" 
+                      v-for="(data_row,index) in filtered_dataArray">
+                      <td v-for="(item,idx) in data_row">{{secretCode(index,idx,item)}}</td>
+                    </tr>
+                    <tr class="table-light" v-else v-for="(data_row,index) in dataArray">
+                      <td v-for="item in data_row">{{secretCode(index,idx,item)}}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </blockquote>
+            </div>
+          </div>
+        </div>
+
+  <!-- 抽出頁面 -->
+        <div v-if="operation=='2'">
+          <div class="card" v-if="has_upload" style="margin:2% auto;">
+            <div class="card-header">
+              <h4>開始抽籤</h4>
+            </div>
+            <div class="card-body">
+              <blockquote class="blockquote mb-0">
+                <!-- 抽籤圖片-->
+                <v-slider
+                  v-if="adjustPicMode"
+                  v-model="width"
+                  class="align-self-stretch"
+                  min="20"
+                  max="100"
+                  step="1"
+                ></v-slider>
+                <v-img
+                  :width="width+'%'"
+                  src="./source/抽籤頁面圖片.png"
+                  class="mx-auto"
+                ></v-img>
+                <div class="mx-auto">
+                  <p style="margin: 3px auto;" v-if="filtered_dataArray.length>0">將從(條件篩選後)名單，共計 <font color="red">{{filtered_dataArray.length-1}}</font>人中，隨機依序抽出 <font color="blue">{{lotteryNumber}}</font> 位。</p>
+                  <v-btn
+                    depressed
+                    x-large
+                    color="warning"
+                    class="ma-2 white--text"
+                    v-on:click="lottery()"
+                    :disabled="invalidLotteryNumber"
+                    style="margin: 3px auto;"
+                  >
+                    抽出
+                  </v-btn>
+                </div>
+              </blockquote>
+            </div>
+          </div>
+          <!-- 抽出名單列表 -->
+          <div class="card" v-if="lotteryResult.length>0">
+            <div class="card-header">
+              <p>預計抽出 <font color="blue">{{lotteryNumber}}</font> 筆</p>
+              <p v-if="lotteryResult.length>0">目前已抽出 <font color="red">{{lotteryResult.length}}</font> 筆</p>
+            </div>
+            <div class="card-body">
+              <blockquote class="blockquote mb-0">
+                <table class="table table-bordered">
+                    <tr class="table-light" v-if="lotteryResult.length>0" 
+                      v-for="(data_row,index) in resultTable">
+                      <td v-if="index>0"><font color="blue">{{index}}</font></td>
+                      <td v-if="index==0">順位</td>
+                      <td v-if="index==resultTable.length-1" v-for="(item,idx) in data_row"><font style="font-weight: bold;font-size: larger;">{{secretCode(index,idx,item)}}</b></td>
+                      <td v-if="index!=resultTable.length-1" v-for="(item,idx) in data_row">{{secretCode(index,idx,item)}}</td>
+                    </tr>
+                </table>
+              </blockquote>
+            </div>
+          </div>
+          <div id="rtable_bottom" ref="rtable_bottom"></div>
+        </div>
+
+  <!-- 說明頁面 -->
+        <div v-if="operation=='0'">
+          <div class="card" style="margin-top: 10px;">
+            <div class="card-header">
+              <h4>程式說明</h4>
+            </div>
+            <div class="card-body">
+              <blockquote class="blockquote mb-0">
+                <p>本抽籤程式由BenWu於2022年3月開發，供抽籤使用。</p>
+                <font color="#16537e" style="font-weight: bold;">Excel匯入格式範例：</font>
+                <v-img
+                  src="./source/匯入之Excel資料格式說明.png"
+                  width="80%"
+                ></v-img>
+              </blockquote>
+            </div>
+          </div>
+          <div class="card" style="margin-top: 10px;">
+            <div class="card-header">
+              <h4>公平性</h4>
+            </div>
+            <div class="card-body">
+              <blockquote class="blockquote mb-0">
+                本程式之亂數產生函式採用：<br>
+                <pre>
+                    randomOf: function(){
+                      return (Math.random()*this.lotteryBox.length)^0;
+                    }
+                </pre>
+                所以，要證明本程式採用的亂數公平性，<br>
+                則要能佐證 <font color="#16537e" style="font-weight: bold;">JavaScript 本身的 Math.random()</font> 產生的亂數夠公平。<br><br>
+                以下為鑑定方式：<br>
+                取 0~999 共 1000 個計數器，每抽出一個 0~999 間的整數亂數，對應的計數器加一，每 100 個號碼作為一組，實際觀察亂數在每個群組的分佈占比。<br>
+                假設此亂數不公正，則會存在多次模擬連抽時，特定區間占比特別高; 反之，則代表亂數足夠公正。<br>
+                <v-btn
+                  color="blue-grey"
+                  class="ma-2 white--text"
+                  v-on:click="randomTestStart()"
+                >
+                  模擬測試(連抽一千萬次)
+                </v-btn><br>
+                <pre>{{randomTestingResult}}</pre>
+              </blockquote>
+            </div>
+          </div>
+        </div>
+      </v-main>
+    </v-app>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+  <script>
+    new Vue({
+      el: '#app',
+      vuetify: new Vuetify(),
+      data: {
+        has_upload: false,
+        dataArray: [],
+        filtered_dataArray: [],
+        attributeArray: [],
+        operation: 1,
+        lotteryNumber: 1,
+        lotteryDialog: false,
+        lotteryResult: [],
+        lotteryBox: [],
+        conditionNum: 0,
+        conditionSelector: ["包含","排除","等於"],
+        conditions: [
+          {
+            attribute:"",
+            type:"包含",
+            value: ""
+          },
+          {
+            attribute:"",
+            type:"包含",
+            value: ""
+          },
+          {
+            attribute:"",
+            type:"包含",
+            value: ""
+          },
+          {
+            attribute:"",
+            type:"包含",
+            value: ""
+          },
+          {
+            attribute:"",
+            type:"包含",
+            value: ""
+          },
+        ],
+        conditionAlert: false,
+        secretAttribute: "",
+        randomTestingResult: "",
+        width: 50,
+        adjustPicMode: false,
+      },
+      methods: {
+        importFile: function(evt) {
+          var f = evt.target.files[0];
+          if (f) {
+            var r = new FileReader();
+            r.onload = e => {
+              var contents = this.processExcel(e.target.result);
+              this.dataArray = JSON.parse(contents).data;
+              this.filtered_dataArray = this.dataArray;
+              this.attributeArray = this.dataArray[0];
+              console.log("this.dataArray",this.dataArray);
+              console.log("this.attributeArray",this.attributeArray);
+              this.has_upload = true;
+              this.lotteryNumber = this.filtered_dataArray.length-1;
+            }
+            r.readAsBinaryString(f);
+          } else {
+            console.log("Failed to load file");
+          }
+        },
+        processExcel: function(data) {
+          var workbook = XLSX.read(data, {
+            type: 'binary'
+          });
+
+          var firstSheet = workbook.SheetNames[0];
+          var data = this.to_json(workbook);
+          return data
+        },
+        to_json: function(workbook){
+          var result = {};
+          workbook.SheetNames.forEach(function(sheetName) {
+            var roa = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+              header: 1
+            });
+            if (roa.length) result[sheetName] = roa;
+          });
+          return JSON.stringify(result, 2, 2);
+        },
+        mutateConditionNumber: function(type){
+          if(type==="+"){
+            if(this.conditionNum<5){this.conditionNum+=1}
+          }else if(type==="-"){
+            if(this.conditionNum>0){this.conditionNum-=1}
+          }
+        },
+        filterByCondition: function(){
+          try{
+            var result=this.dataArray.slice(1);
+            for(var i=0;i<this.conditionNum;i++){
+              var idx = this.dataArray[0].indexOf(this.conditions[i].attribute);
+              console.log("idx",idx);
+              console.log("this.conditions[i].attribute",this.conditions[i].attribute);
+              console.log("this.conditions[i].value",this.conditions[i].value);
+              if(this.conditions[i].type==="包含" && this.conditions[i].attribute!=="" && this.conditions[i].value!==""){
+                result = result.filter(itemArray => itemArray[idx].indexOf(this.conditions[i].value.toString())>=0);
+              }else if(this.conditions[i].type==="排除" && this.conditions[i].attribute!=="" && this.conditions[i].value!==""){
+                result = result.filter(itemArray => itemArray[idx].indexOf(this.conditions[i].value.toString())<0);
+              }else if(this.conditions[i].type==="等於" && this.conditions[i].attribute!=="" && this.conditions[i].value!==""){
+                result = result.filter(itemArray => itemArray[idx] == this.conditions[i].value.toString());
+              }
+            }
+            this.filtered_dataArray=[this.attributeArray].concat(result);
+            this.lotteryNumber=result.length;
+          }catch(e){
+            console.log(e);
+            this.filtered_dataArray=[];
+          }finally{
+            this.lotteryResult = [];
+            this.conditionAlert = true;
+            setTimeout(()=>{
+              this.conditionAlert = false
+            },5000)
+          }
+        },
+        secretCode: function(idx1,idx2,val){
+          if(this.secretAttribute!=="" && idx1!==0){
+            if(idx2 === this.attributeArray.indexOf(this.secretAttribute)){
+              if(val.length==1){
+                return "*";
+              }else if(val.length==2){
+                return val.substring(0,1)+"*";
+              }
+              else if(val.length==3){
+                return val.substring(0,1)+"*"+val.substring(2,3);
+              }
+              else if(val.length==4){
+                return val.substring(0,1)+"***"+val.substring(val.length-1,val.length);
+              }
+              else if(val.length>4){
+                return val.substring(0,2)+"***"+val.substring(val.length-2,val.length);
+              }
+
+            }else{
+              return val;
+            }
+          }else{
+            return val;
+          }
+        },
+        lottery: async function(){
+          this.lotteryResult = [];
+          this.lotteryBox = this.filtered_dataArray.slice(1);
+          var episode_result;
+          for(var j=0;j<this.lotteryNumber;j++){
+            episode_result = this.randomOf();
+            this.lotteryResult.push(this.lotteryBox[episode_result]);
+            this.removeFromBox(episode_result);
+            await this.wait(700);
+          }
+          alert("已完成抽籤。");
+        },
+        randomOf: function(){
+          return (Math.random()*this.lotteryBox.length)^0;
+        },
+        removeFromBox: function(idx){
+           return this.lotteryBox.splice(idx,1);
+        },
+        wait: async function(timeout) {
+            this.scrollToBottom();
+            return new Promise(resolve => {
+                setTimeout(resolve, timeout);
+            });
+        },
+        scrollToBottom: function(){
+          const el = this.$el.querySelector("#rtable_bottom");
+          if (el) {
+            el.scrollIntoView();
+          }
+        },
+        exportCSV: function(){
+          if(!this.lotteryResult.length>0){
+            alert("尚未有抽籤結果資料!");
+          }else{
+            try{
+              var csvContent = "data:text/csv;charset=utf-8,\ufeff";
+              //寫入第一列屬性
+              var row = this.attributeArray.join(",");
+              csvContent += row + "\r\n";
+              //寫入抽出結果
+              for(var i=0;i<this.lotteryResult.length;i++){
+                //console.log(this.lotteryResult[i]);
+                row = this.lotteryResult[i].join(",");
+                csvContent += row + "\r\n";
+              }
+              var encodedUri = encodeURI(csvContent);
+              window.open(encodedUri);
+            }catch(e){
+              alert("匯出時發生未預期的錯誤，請重新匯出!");
+              console.log(e.toString());
+            }
+          }
+        },
+        reloadPage(){
+          window.location.reload()
+        },
+        randomTestStart: function(){
+          var range = new Array(1000); //準備1000個計數器
+          //計數器歸零
+          for(var i = 0, n = range.length; i < n; ++i){
+              range[i] = 0;
+          }
+          for(var i = 0, n = 10000000; i < n; ++i){
+              var now_result = (Math.random()*1000)^0; //取出 0~1000 間的亂數整數
+              range[now_result]++; //把對應到的計數器 +1
+          }
+          //每 100 個數字為一區間，來觀察亂數的區間分佈
+          var result = [];
+          for(var i = 0; i < 10; i++) {
+              var sum = 0;
+              for(var j =0; j < 100; j++){
+                 sum+=range[i*100+j];
+              }
+              result.push('區間 ', i*100, ' 到 ', i*100+99, ' 間，被抽到 ', sum, ' 次 ('+(sum/100000)+'%)\n');
+          }
+          this.randomTestingResult = result.join('');
+        }
+      },
+      computed: {
+        invalidLotteryNumber: function() {
+          if(this.lotteryNumber<=0 || this.lotteryNumber>=(this.filtered_dataArray.length)){
+            return true
+          }else{
+            return false
+          }
+        },
+        resultTable: function() {
+          return [this.attributeArray].concat(this.lotteryResult);
+        },
+      }
+    });
+  </script>
+</body>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.14.3/xlsx.full.min.js"></script>
+<style>
+  tbody > tr:first-child td {
+     background-color: #76a5af !important;
+     color: white;
+     font-weight: bold;
+  }
+</style>
+</html>
